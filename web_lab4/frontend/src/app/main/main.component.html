@@ -1,0 +1,96 @@
+<app-header></app-header>
+
+<div class="main-container">
+  <p-message *ngIf="errorMessage" severity="error" text="{{ errorMessage }}"></p-message>
+
+  <div class="form-section">
+    <form>
+      <div class="input-group">
+        X:
+        <p-dropdown [options]="xOptions"
+                    [(ngModel)]="x" name="x" id="x"
+                    placeholder="Выберите X"></p-dropdown>
+      </div>
+      <div class="input-group">
+        Y:
+        <p-slider [(ngModel)]="y" name="y" id="y" [min]="-3" [max]="5" [step]="1"></p-slider>
+        <p> {{ y  }}</p>
+      </div>
+      <div class="input-group">
+        R:
+        <p-dropdown [options]="rOptions"
+                    [(ngModel)]="r" name="r" id="r"
+                    placeholder="Выберите R"
+                    (onChange)="onRChange()"></p-dropdown>
+      </div>
+
+      <p-button type="submit" label="Отправить" class="submit-btn" (click)="onSubmit()"></p-button>
+    </form>
+  </div>
+
+  <div class="graph-section">
+    <svg id="graph" width="500" height="500" viewBox="0 0 500 500" (click)="onGraphClick($event)">
+      <g id="graph-content">
+      <rect x="250" y="250" width="200" height="100" fill="#3399ff"></rect>
+      <polygon fill="#3399ff" points="250,250 250,50 350,250"></polygon>
+      <path d="M 150 250 A 100 100 -269 0 0 250 350 L 250 250 Z" fill="#3399ff"></path>
+      <line stroke="black" x1="0" x2="500" y1="250" y2="250"/>
+      <line stroke="black" x1="250" x2="250" y1="0" y2="500"/>
+      <!-- Стрелки -->
+      <line stroke="black" x1="250" x2="255" y1="0" y2="10"/>
+      <line stroke="black" x1="250" x2="245" y1="0" y2="10"/>
+
+      <line stroke="black" x1="500" x2="490" y1="250" y2="255"/>
+      <line stroke="black" x1="500" x2="490" y1="250" y2="245"/>
+      </g>
+      <!-- Засечки -->
+      <line stroke="black" x1="50" x2="50" y1="255" y2="245"/>
+      <line stroke="black" x1="150" x2="150" y1="255" y2="245"/>
+      <line stroke="black" x1="350" x2="350" y1="255" y2="245"/>
+      <line stroke="black" x1="450" x2="450" y1="255" y2="245"/>
+
+      <line stroke="black" x1="255" x2="245" y1="50" y2="50"/>
+      <line stroke="black" x1="255" x2="245" y1="150" y2="150"/>
+      <line stroke="black" x1="255" x2="245" y1="350" y2="350"/>
+      <line stroke="black" x1="255" x2="245" y1="450" y2="450"/>
+
+      <text x="260" y="50" fill="black">R</text>
+      <text x="260" y="155" fill="black">R/2</text>
+      <text x="260" y="355" fill="black">-R/2</text>
+      <text x="260" y="455" fill="black">-R</text>
+      <text x="45" y="240" fill="black">-R</text>
+      <text x="140" y="240" fill="black">-R/2</text>
+      <text x="340" y="240" fill="black">R/2</text>
+      <text x="445" y="240" fill="black">R</text>
+    </svg>
+  </div>
+  <div class="clear-section">
+    <p-button label="Очистить" class="clear-btn" (click)="onClear()"></p-button>
+  </div>
+  <div class="results-section">
+    <p-table [value]="results"  >
+      <ng-template pTemplate="header">
+        <tr>
+          <th>Результат</th>
+          <th>X</th>
+          <th>Y</th>
+          <th>R</th>
+          <th>Время</th>
+          <th>Время выполнения</th>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="body" let-result>
+        <tr>
+          <td data-label="Результат">{{ result.hit ? 'Попадание' : 'Мимо' }}</td>
+          <td data-label="X">{{ result.x }}</td>
+          <td data-label="Y">{{ result.y }}</td>
+          <td data-label="R">{{ result.r }}</td>
+          <td data-label="Время">{{ result.timeNow }}</td>
+          <td data-label="Время выполнения">{{ result.executionTime }} нс</td>
+        </tr>
+      </ng-template>
+    </p-table>
+  </div>
+
+
+</div>

@@ -1,0 +1,40 @@
+<app-header></app-header>
+<div class="container">
+
+  <div class="form-container">
+    <p-message *ngIf="errorMessage" severity="error" text="{{ errorMessage }}"></p-message>
+    <h2>Авторизация</h2>
+    <form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
+      <div class="form-group">
+        <label for="username">Имя пользователя</label>
+        <input
+          id="username"
+          type="text"
+          formControlName="username"
+          placeholder="Введите ваше имя пользователя"
+        />
+        <div *ngIf="loginForm.get('username')?.invalid && loginForm.get('username')?.touched" class="error">
+          Имя пользователя обязательно.
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="password">Пароль</label>
+        <input
+          id="password"
+          type="password"
+          formControlName="password"
+          placeholder="Введите ваш пароль"
+        />
+        <div *ngIf="loginForm.get('password')?.invalid && loginForm.get('password')?.touched" class="error">
+          Пароль обязателен.
+        </div>
+      </div>
+
+      <button type="submit" [disabled]="loginForm.invalid">Войти</button>
+    </form>
+    <div class="links">
+      <a routerLink="/register">Нет аккаунта? Зарегистрироваться</a>
+    </div>
+  </div>
+</div>
