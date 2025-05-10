@@ -1,0 +1,1 @@
+Лаба по автоматизации сборки 4 лабы по вебу(web_lab4) на Gradle (Groovy DSL) и тестированию через Junit и Selenium

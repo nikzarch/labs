@@ -1,0 +1,5 @@
+wildfly-34.0.0.Final/
+.idea/
+backend/build/
+frontendlab4/dist
+backend/src/main/webapp/

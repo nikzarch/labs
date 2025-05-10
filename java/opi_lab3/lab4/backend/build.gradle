@@ -1,0 +1,497 @@
+import org.xml.sax.SAXException
+
+import javax.xml.parsers.DocumentBuilderFactory
+
+plugins {
+    id 'java'
+    id 'war'
+}
+
+group = "org.example"
+version = '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+ext.packaging = "jar"
+
+dependencies {
+    implementation 'jakarta.platform:jakarta.jakartaee-api:10.0.0'
+
+    implementation 'com.google.code.gson:gson:2.8.8'
+
+    implementation 'io.jsonwebtoken:jjwt:0.12.0'
+
+    implementation 'jakarta.ws.rs:jakarta.ws.rs-api:3.1.0'
+
+    implementation 'org.postgresql:postgresql:42.7.0'
+
+    implementation 'jakarta.persistence:jakarta.persistence-api:3.1.0'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
+
+    testImplementation 'org.seleniumhq.selenium:selenium-java:4.20.0'
+
+    providedCompile 'org.hibernate:hibernate-core:5.6.15.Final'
+}
+
+tasks.register('compileProject') {
+    group = "laba"
+    description = "Compiles Java files"
+
+    doLast {
+        def src = file("src/main/java")
+        def out = file("$buildDir/classes")
+        // что делать если main/java нет
+        out.mkdirs()
+
+        def javaFiles = fileTree(dir: src, include: "**/*.java").files.collect { it.path }
+        def cp = configurations.compileClasspath.asPath + File.pathSeparator + out.path
+
+        def cmd = ["javac", "-d", out.path, "-cp", cp] + javaFiles
+        def p = cmd.execute()
+        def code = p.waitFor()
+        if (code != 0) {
+            throw new GradleException("Compilation error")
+        }
+    }
+}
+
+
+tasks.register("buildProject") {
+
+    group = "laba"
+    description = "Build jar, or war if -Ppackaging = war "
+
+    dependsOn compileProject
+
+    def variant
+    doFirst{
+        variant  = ((project.hasProperty("packaging") && project.property("packaging") == "war") || project.ext.packaging == "war") ? "war" : "jar"
+    }
+    doLast {
+        println variant
+
+        def manifestFile = file("$buildDir/manifest.mf")
+        manifestFile.text = """\
+Manifest-Version: 1.0
+Created-By: 17.0.11 (Oracle Corporation)
+""".stripIndent()
+        def cmd, warTemp
+        if (variant == "war") {
+            warTemp = file("$buildDir/warTemp")
+            def webInf = new File(warTemp, "WEB-INF")
+            def classesOut = new File(webInf, "classes")
+            classesOut.mkdirs()
+
+            copy {
+                from "$buildDir/classes"
+                into classesOut
+            }
+            copy {
+                from "src/main/webapp"
+                into warTemp
+            }
+            copy {
+                from "src/main/resources/META-INF"
+                into classesOut
+            }
+            cmd = [
+                    "jar", "-cfm",
+                    "$buildDir/lab4-${version}.war",
+                    manifestFile.absolutePath,
+                    "-C", warTemp.absolutePath, "."
+            ]
+
+        } else {
+            cmd = [
+                    "jar", "-cfm",
+                    "$buildDir/lab4-${version}.jar",
+                    manifestFile.absolutePath,
+                    "-C", "$buildDir/classes", "."
+            ]
+        }
+        def p = cmd.execute()
+        def code = p.waitFor()
+
+        if (code != 0) {
+            throw new GradleException("Build error")
+        }
+        if (!Objects.isNull(warTemp) && warTemp.exists()) {
+            warTemp.deleteDir()
+        }
+        manifestFile.delete()
+
+    }
+}
+tasks.test {
+    description = "Runs JUnit tests"
+    useJUnitPlatform()
+}
+tasks.register("cleanProject") {
+    description = "Cleans build directory."
+    def dir = file("$buildDir")
+    dir.deleteDir()
+}
+
+
+tasks.register("native2asciiProject") {
+    group = "laba"
+    description = "Converts all localization files to ascii"
+
+    def localeDir = file("src/main/resources/locale")
+    doLast {
+        fileTree(localeDir).each { File file -> ["native2ascii", file.path, file.path].execute() }
+    }
+}
+def music = file("props/seinfield.mp3")
+tasks.register("music") {
+    group = "laba"
+    description = "Runs buildProject task and plays Seinfield theme when build is done."
+
+    if (!music.exists()) {
+        throw new GradleException("props/seinfield.mp3 not found in root directory")
+    }
+    dependsOn buildProject
+    doLast {
+        def cmd = ["cmd", "/c", "start", "wmplayer", music.absolutePath]
+        def p = cmd.execute()
+    }
+}
+
+
+tasks.register("xml") {
+    group = "laba"
+    description = "Validates all xml files in project"
+
+    doLast {
+        def xmlFiles = fileTree(projectDir) {
+            include '**/*.xml'
+        }
+
+        if (xmlFiles.isEmpty()) {
+            println "No XML files found."
+            return
+        }
+
+        def factory = DocumentBuilderFactory.newInstance()
+        def builder = factory.newDocumentBuilder()
+
+        def hasErrors = false
+
+        xmlFiles.each { file ->
+            try {
+                builder.parse(file)
+                println "${file} is valid XML file"
+            } catch (SAXException | IOException e) {
+                hasErrors = true
+                println "Invalid file found: ${file} - ${e.message}"
+            }
+            }
+
+
+        if (!hasErrors) {
+            println "All XML files are valid."
+        }
+    }
+}
+
+
+tasks.register("envProject") {
+    group = "laba"
+    description = "Builds and executes program with defined java version and jvm options in file env.properties"
+
+    dependsOn buildProject
+
+    doLast {
+        def properties = new Properties()
+        properties.load(file("props/env.properties").newReader())
+
+        def javaVersion = properties.getProperty("javaVersion")
+        def jvmArgs = properties.getProperty("jvmArgs").split(" ") as List
+
+        def javaHomeEnv = System.getenv("JAVA_HOME_${javaVersion}")
+        if (javaHomeEnv == null) {
+            throw new GradleException("JAVA_HOME_${javaVersion} is not set in the environment.")
+        }
+
+        def javaExecutable = "${javaHomeEnv}\\bin\\java"
+        def jarFile = file("$buildDir/lab4-${version}.jar")
+
+        if (!jarFile.exists()) {
+            throw new GradleException("JAR file not found: ${jarFile}. Run gradle buildProject first.")
+        }
+
+
+
+        def command = [javaExecutable] + jvmArgs + ['-jar', jarFile.absolutePath]
+        def p = command.execute()
+        def code = p.waitFor() //
+    }
+}
+
+tasks.register("diffProject") {
+    group = "laba"
+    description = "Checks status of files and commits if files in notGitIgnore.properties are not changed"
+
+    doLast {
+        def props = new Properties()
+        props.load(file("props/notGitIgnore.properties").newReader())
+        def classes = props.get("classes").split(" ") as List
+
+        boolean hasChanges = false
+
+        classes.each { className ->
+            def cmd = ["git", "diff", "--", "src/**/" + className]
+            def p = cmd.execute()
+            def output = p.inputStream.text
+            p.waitFor()
+
+            if (output.trim()) {
+                println "Changes found in ${className}:\n$output"
+                hasChanges = true
+            }
+        }
+
+        if (!hasChanges) {
+            println "No changes => LETS COMMIT"
+            def commitCmd = ["git", "commit", "--allow-empty", "-m", "diff command commit"]
+            def commitProc = new ProcessBuilder(commitCmd)
+                    .inheritIO()
+                    .start()
+            commitProc.waitFor()
+        } else {
+            println "Changes was detected, no commits"
+        }
+    }
+}
+tasks.register("history"){
+    group = "laba"
+    description = "Checkout to last working git revision and saves diff"
+    doLast {
+        def revisions = "git rev-list HEAD".execute().text.readLines()
+        def goodRevision,compileSuccess = false
+        for (String revision : revisions){
+            println "Check out $revision"
+            def checkoutCmd = ["git","checkout", revision].execute()
+            def code = checkoutCmd.waitFor()
+            if (code != 0){
+                println "FAIL for $revision"
+                continue
+            }
+            try {
+                println "Let's try to compile this revision"
+                def result = "cmd /c gradlew.bat compileProject".execute()
+                code = result.waitFor()
+                if (code != 0) throw new GradleException(result.errorStream.text)
+                goodRevision = revision
+                compileSuccess = true
+                break
+            }catch (Exception exc){
+                println "Compile failed on $revision : ${exc.getMessage()}"
+            }
+
+        }
+        if (!compileSuccess){
+            println "No working revision was found"
+            return
+        }
+
+        def idx = revisions.indexOf(goodRevision)
+        if (idx == 0){
+            println "Current commit is more than ok"
+            return
+        }
+
+        def nextRevision = revisions[idx]-1
+        def diffCmd = ["git","diff", goodRevision, nextRevision]
+
+        def diff = diffCmd.execute().text
+        file("props/history/history.diff").text = diff
+        println "Diff saved to history.diff"
+    }
+}
+def wildfly = "..\\wildfly-34.0.0.Final"
+tasks.register("funcTestProject") {
+    group = "laba"
+    description = "Deploys WAR to WildFly, runs frontend, then executes functional tests"
+
+    project.ext.packaging = "war"
+
+    dependsOn buildProject
+
+    doLast {
+        project.ext.packaging = "jar"
+        def wildflyDeployments = file("${wildfly}/standalone/deployments")
+        def warFile = file("$buildDir/lab4-${version}.war")
+
+        if (!warFile.exists()) {
+            throw new GradleException("WAR file not found: ${warFile}")
+        }
+
+        copy {
+            from warFile
+            into wildflyDeployments
+        }
+
+        println "Starting wildfly"
+        def wildflyProc = ["cmd", "/c", "${wildfly}\\bin\\standalone.bat"].execute()
+        //wildflyProc.in.eachLine { line -> println line }
+        sleep(10000)
+        println "Starting frontend"
+        def frontendDir = file("../frontendlab4/")
+        def frontendProc = ["cmd", "/c", "npm run-script start"].execute(null, frontendDir)
+        //frontendProc.in.eachLine { line -> println line }
+        sleep(10000)
+
+        println "Running functional tests!"
+
+        def result = "cmd /c gradlew.bat test".execute()
+        result.in.eachLine {println it}
+        sleep(5000)
+        println "Killing wildfly"
+        wildflyProc.destroy()
+        wildflyProc.waitForOrKill(5000)
+
+        println "Killing frontend"
+        frontendProc.destroy()
+        frontendProc.waitForOrKill(5000)
+    }
+}
+tasks.register("report") {
+    group = "laba"
+    description = "On successful test commits JUnit report"
+
+    dependsOn test
+
+    doLast {
+        def srcDir = file("build/test-results/test")
+        def destDir = file("reports")
+        if (!srcDir.exists() || srcDir.listFiles().length == 0) {
+            println "Test report not found"
+            return
+        }
+
+        copy {
+            from srcDir
+            into destDir
+        }
+
+        ["git", "add", "reports"].execute().waitFor()
+        def commit = ["git", "commit", "-m", "added JUnit XML test report"].execute()
+        commit.waitFor()
+    }
+}
+import java.util.zip.*
+
+tasks.register("team") {
+    group = "laba"
+    description = "Takes 3 latest git revisions, builds them and zips"
+    def zipFile = file("$buildDir/versions.zip")
+
+    dependsOn "cleanProject"
+    doLast {
+        def revisions = "git rev-list --max-count=3 HEAD".execute().text.readLines()
+        if (zipFile.exists()) {
+            zipFile.delete()
+        }
+        def zipStream = new ZipOutputStream(new FileOutputStream(zipFile))
+        revisions.each { rev ->
+            println "Check out $rev"
+            def checkout = ["git", "checkout", rev].execute()
+            checkout.waitFor()
+
+            def result = ["cmd", "/c", "gradlew.bat", "buildProject"].execute()
+            def code = result.waitFor()
+            if (code != 0) {
+                throw new GradleException("Build failed for revision $rev")
+            }
+
+            def jarFile = new File("build/lab4-${version}.jar")
+            if (!jarFile.exists()) {
+                throw new GradleException("JAR not found in $dir")
+            }
+            def entry = new ZipEntry(rev+".jar")
+            zipStream.putNextEntry(entry)
+            zipStream.write(jarFile.bytes)
+            zipStream.closeEntry()
+        }
+
+        zipStream.close()
+    }
+}
+import java.security.MessageDigest
+
+tasks.register("doc") {
+    group = "laba"
+    description = "Adds md5 and sha-1 files to manifest and also generates and adds javadoc zip"
+
+    dependsOn compileProject
+
+    doLast {
+        def buildClasses = file("$buildDir/classes")
+        def javadocDir = file("$buildDir/docs/javadoc")
+        def javadocZip = file("$buildDir/javadoc.zip")
+        def manifestFile = file("$buildDir/manifest.mf")
+        ant.javadoc(destdir: javadocDir, sourcepath: "src/main/java", classpath: configurations.compileClasspath.asPath) {
+            classpath {
+                files("$buildDir/classes")
+            }
+        }
+
+        def zipStream = new ZipOutputStream(new FileOutputStream(javadocZip))
+        javadocDir.eachFileRecurse { file ->
+            if (file.isFile()) {
+                def entryName = file.path.substring(javadocDir.path.length() + 1).replace("\\", "/")
+                def zipEntry = new ZipEntry(entryName)
+                zipStream.putNextEntry(zipEntry)
+                zipStream.write(file.bytes)
+                zipStream.closeEntry()
+            }
+        }
+        zipStream.close()
+
+        def filesToHash = fileTree(buildClasses) + javadocZip
+        def digests = [:]
+        ['MD5', 'SHA-1'].each { algo ->
+            digests[algo] = filesToHash.collect { file ->
+                def md = MessageDigest.getInstance(algo)
+                md.update(file.bytes)
+                "${algo}: ${file.name} = " + md.digest().encodeHex().toString()
+            }.join("\n")
+        }
+
+        def manifestContent = """\
+Manifest-Version: 1.0
+Created-By: 17.0.11 (Oracle Corporation)
+${digests.collect { k, v -> "$k-Digest: \n$v" }.join("\n\n")}
+""".stripIndent()
+
+        manifestFile.text = manifestContent
+    }
+}
+
+tasks.register("scp") {
+    group = "laba"
+    description = "Sends built JAR or WAR to remote server using SCP"
+
+    dependsOn buildProject
+
+    doLast {
+        def variant = ((project.hasProperty("packaging") && project.property("packaging") == "war") || project.ext.packaging == "war") ? "war" : "jar"
+        def fileToSend = file("$buildDir/lab4-${version}.${variant}")
+
+        if (!fileToSend.exists()) {
+            throw new GradleException("File not found: ${fileToSend}")
+        }
+        def command = ["scp", "-P", "2222", fileToSend.absolutePath, "sXXXXXX@se.ifmo.ru:~/"]
+        def p = new ProcessBuilder(command)
+                .inheritIO()
+                .start()
+        def code = p.waitFor()
+
+        if (code != 0) {
+            throw new GradleException("SCP transfer error")
+        }
+    }
+}
